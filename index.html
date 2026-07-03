@@ -809,7 +809,8 @@
         memo: String(item.memo || ''),
         favorite: Boolean(item.favorite),
         createdAt: Number(item.createdAt) || Date.now(),
-        readingIndex: String(item.readingIndex || '')
+        readingIndex: String(item.readingIndex || ''),
+        readingLines: Array.isArray(item.readingLines) ? item.readingLines.map(l => String(l || '')) : []
       })).filter(item => item.title);
       return normalized;
     }
@@ -860,16 +861,48 @@
       }
     }
 
+    async function buildReadingLines(song) {
+      const lines = (song.lyrics || '').split(/\n/);
+      const readings = [];
+      for (const line of lines) {
+        const basic = toHiraganaBasic(line);
+        if (!line.trim() || !readingReady) {
+          readings.push(basic);
+          continue;
+        }
+        try {
+          const converted = await kuroshiro.convert(line, { to: 'hiragana' });
+          readings.push(toHiraganaBasic(converted));
+        } catch {
+          readings.push(basic);
+        }
+      }
+      return readings;
+    }
+
     async function refreshSongReadingIndex(song) {
       song.readingIndex = await buildReadingIndex(song);
+      song.readingLines = await buildReadingLines(song);
     }
 
     async function rebuildAllReadingIndexes() {
       for (const song of state.songs) {
         song.readingIndex = await buildReadingIndex(song);
+        song.readingLines = await buildReadingLines(song);
       }
       persistSongs();
       if (state.screen === 'search') renderSearch();
+    }
+
+    function findReadingMatchLine(song, normalizedQuery) {
+      if (!normalizedQuery || !Array.isArray(song.readingLines)) return -1;
+      const lyricsLines = (song.lyrics || '').split(/\n/);
+      for (let i = 0; i < song.readingLines.length; i++) {
+        if (song.readingLines[i] && song.readingLines[i].includes(normalizedQuery)) {
+          return i;
+        }
+      }
+      return -1;
     }
 
     function withTimeout(promise, ms, label) {
@@ -1035,14 +1068,23 @@
       const lowerFlat = flat.toLowerCase();
       const lowerQuery = q.toLowerCase();
       const idx = lowerFlat.indexOf(lowerQuery);
-      if (idx === -1) return flat.slice(0, 80);
-      const radius = 24;
-      const start = Math.max(0, idx - radius);
-      const end = Math.min(flat.length, idx + q.length + radius);
-      let snippet = flat.slice(start, end);
-      if (start > 0) snippet = '…' + snippet;
-      if (end < flat.length) snippet = snippet + '…';
-      return snippet;
+      if (idx !== -1) {
+        const radius = 24;
+        const start = Math.max(0, idx - radius);
+        const end = Math.min(flat.length, idx + q.length + radius);
+        let snippet = flat.slice(start, end);
+        if (start > 0) snippet = '…' + snippet;
+        if (end < flat.length) snippet = snippet + '…';
+        return snippet;
+      }
+      const normalizedQuery = normalizeSearchText(q);
+      const lineIdx = findReadingMatchLine(song, normalizedQuery);
+      if (lineIdx !== -1) {
+        const lyricsLines = (song.lyrics || '').split(/\n/);
+        const line = lyricsLines[lineIdx].trim();
+        if (line) return line.slice(0, 80);
+      }
+      return flat.slice(0, 80);
     }
 
     function allTags() {
