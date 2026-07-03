@@ -810,7 +810,8 @@
         favorite: Boolean(item.favorite),
         createdAt: Number(item.createdAt) || Date.now(),
         readingIndex: String(item.readingIndex || ''),
-        readingLines: Array.isArray(item.readingLines) ? item.readingLines.map(l => String(l || '')) : []
+        readingLines: Array.isArray(item.readingLines) ? item.readingLines.map(l => String(l || '')) : [],
+        readingTokens: Array.isArray(item.readingTokens) ? item.readingTokens : []
       })).filter(item => item.title);
       return normalized;
     }
@@ -861,34 +862,48 @@
       }
     }
 
+    async function buildReadingLineTokens(line) {
+      if (!line.trim() || !readingReady || !kuroshiro._analyzer || typeof kuroshiro._analyzer.parse !== 'function') {
+        return [{ surface: line, reading: toHiraganaBasic(line) }];
+      }
+      try {
+        const tokens = await kuroshiro._analyzer.parse(line);
+        return tokens.map(t => {
+          const surface = t.surface_form || '';
+          let reading = t.reading || '';
+          if (!reading || reading === '*') reading = surface;
+          return { surface, reading: toHiraganaBasic(reading) };
+        });
+      } catch {
+        return [{ surface: line, reading: toHiraganaBasic(line) }];
+      }
+    }
+
     async function buildReadingLines(song) {
       const lines = (song.lyrics || '').split(/\n/);
       const readings = [];
+      const tokensPerLine = [];
       for (const line of lines) {
-        const basic = toHiraganaBasic(line);
-        if (!line.trim() || !readingReady) {
-          readings.push(basic);
-          continue;
-        }
-        try {
-          const converted = await kuroshiro.convert(line, { to: 'hiragana' });
-          readings.push(toHiraganaBasic(converted));
-        } catch {
-          readings.push(basic);
-        }
+        const tokens = await buildReadingLineTokens(line);
+        tokensPerLine.push(tokens);
+        readings.push(tokens.map(t => t.reading).join(''));
       }
-      return readings;
+      return { readings, tokensPerLine };
     }
 
     async function refreshSongReadingIndex(song) {
       song.readingIndex = await buildReadingIndex(song);
-      song.readingLines = await buildReadingLines(song);
+      const { readings, tokensPerLine } = await buildReadingLines(song);
+      song.readingLines = readings;
+      song.readingTokens = tokensPerLine;
     }
 
     async function rebuildAllReadingIndexes() {
       for (const song of state.songs) {
         song.readingIndex = await buildReadingIndex(song);
-        song.readingLines = await buildReadingLines(song);
+        const { readings, tokensPerLine } = await buildReadingLines(song);
+        song.readingLines = readings;
+        song.readingTokens = tokensPerLine;
       }
       persistSongs();
       if (state.screen === 'search') renderSearch();
@@ -896,13 +911,22 @@
 
     function findReadingMatchLine(song, normalizedQuery) {
       if (!normalizedQuery || !Array.isArray(song.readingLines)) return -1;
-      const lyricsLines = (song.lyrics || '').split(/\n/);
       for (let i = 0; i < song.readingLines.length; i++) {
         if (song.readingLines[i] && song.readingLines[i].includes(normalizedQuery)) {
           return i;
         }
       }
       return -1;
+    }
+
+    function highlightReadingTokens(tokens, normalizedQuery) {
+      return tokens.map(t => {
+        const surfaceEsc = esc(t.surface);
+        if (t.reading && normalizedQuery && t.reading.includes(normalizedQuery)) {
+          return `<mark>${surfaceEsc}</mark>`;
+        }
+        return surfaceEsc;
+      }).join('');
     }
 
     function withTimeout(promise, ms, label) {
@@ -1064,7 +1088,7 @@
     function getLyricsPreview(song, query) {
       const flat = previewText(song.lyrics);
       const q = (query || '').trim();
-      if (!q) return flat.slice(0, 80);
+      if (!q) return { html: esc(flat.slice(0, 80)), plain: true };
       const lowerFlat = flat.toLowerCase();
       const lowerQuery = q.toLowerCase();
       const idx = lowerFlat.indexOf(lowerQuery);
@@ -1075,16 +1099,16 @@
         let snippet = flat.slice(start, end);
         if (start > 0) snippet = '…' + snippet;
         if (end < flat.length) snippet = snippet + '…';
-        return snippet;
+        return { html: highlight(snippet, q), plain: false };
       }
       const normalizedQuery = normalizeSearchText(q);
       const lineIdx = findReadingMatchLine(song, normalizedQuery);
-      if (lineIdx !== -1) {
-        const lyricsLines = (song.lyrics || '').split(/\n/);
-        const line = lyricsLines[lineIdx].trim();
-        if (line) return line.slice(0, 80);
+      if (lineIdx !== -1 && Array.isArray(song.readingTokens) && song.readingTokens[lineIdx]) {
+        const tokens = song.readingTokens[lineIdx];
+        const highlighted = highlightReadingTokens(tokens, normalizedQuery).trim();
+        if (highlighted) return { html: highlighted.slice(0, 200), plain: false };
       }
-      return flat.slice(0, 80);
+      return { html: esc(flat.slice(0, 80)), plain: true };
     }
 
     function allTags() {
@@ -1139,7 +1163,7 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="${song.favorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
             </button>
           </div>
-          ${preview ? `<div class="song-preview">${highlight(preview, query)}</div>` : ''}
+          ${preview.html ? `<div class="song-preview">${preview.html}</div>` : ''}
           ${song.tags.length ? `<div class="tag-list">${song.tags.map(tag => `<span class="tag">${highlight(tag, query)}</span>`).join('')}</div>` : ''}
         </article>
       `;
