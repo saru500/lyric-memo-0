@@ -6,6 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="歌詞メモ" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="apple-touch-icon" href="./assets/icon.png">
+  <link rel="icon" type="image/png" href="./assets/icon.png">
   <title>歌詞メモ</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1025,6 +1028,23 @@
       return (text || '').replace(/\n+/g, ' ').trim();
     }
 
+    function getLyricsPreview(song, query) {
+      const flat = previewText(song.lyrics);
+      const q = (query || '').trim();
+      if (!q) return flat.slice(0, 80);
+      const lowerFlat = flat.toLowerCase();
+      const lowerQuery = q.toLowerCase();
+      const idx = lowerFlat.indexOf(lowerQuery);
+      if (idx === -1) return flat.slice(0, 80);
+      const radius = 24;
+      const start = Math.max(0, idx - radius);
+      const end = Math.min(flat.length, idx + q.length + radius);
+      let snippet = flat.slice(start, end);
+      if (start > 0) snippet = '…' + snippet;
+      if (end < flat.length) snippet = snippet + '…';
+      return snippet;
+    }
+
     function allTags() {
       return [...new Set(state.songs.flatMap(song => song.tags))].filter(Boolean).sort((a, b) => a.localeCompare(b, 'ja'));
     }
@@ -1065,7 +1085,7 @@
     }
 
     function songCardHtml(song, query = '') {
-      const preview = previewText(song.lyrics).slice(0, 80);
+      const preview = getLyricsPreview(song, query);
       return `
         <article class="song-card" data-song-id="${song.id}">
           <div class="song-card-head">
