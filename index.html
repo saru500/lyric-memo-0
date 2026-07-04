@@ -670,6 +670,12 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
           </button>
         </div>
+        <div class="toolbar" id="searchModeToolbar">
+          <button class="pill-btn active" data-search-mode="all" type="button">すべて</button>
+          <button class="pill-btn" data-search-mode="title" type="button">曲名</button>
+          <button class="pill-btn" data-search-mode="lyrics" type="button">歌詞</button>
+          <button class="pill-btn" data-search-mode="artist" type="button">アーティスト</button>
+        </div>
         <p class="section-title" id="searchCount"></p>
         <div class="card-list" id="searchList"></div>
       </section>
@@ -810,6 +816,8 @@
         favorite: Boolean(item.favorite),
         createdAt: Number(item.createdAt) || Date.now(),
         readingIndex: String(item.readingIndex || ''),
+        readingTitle: String(item.readingTitle || ''),
+        readingArtist: String(item.readingArtist || ''),
         readingLines: Array.isArray(item.readingLines) ? item.readingLines.map(l => String(l || '')) : [],
         readingTokens: Array.isArray(item.readingTokens) ? item.readingTokens : []
       })).filter(item => item.title);
@@ -862,6 +870,18 @@
       }
     }
 
+    async function buildFieldReadingIndex(fieldText) {
+      const source = String(fieldText || '');
+      const basic = toHiraganaBasic(source);
+      if (!source.trim() || !readingReady) return basic;
+      try {
+        const converted = await kuroshiro.convert(source, { to: 'hiragana' });
+        return toHiraganaBasic(converted + ' ' + source);
+      } catch {
+        return basic;
+      }
+    }
+
     async function buildReadingLineTokens(line) {
       if (!line.trim() || !readingReady || !kuroshiro._analyzer || typeof kuroshiro._analyzer.parse !== 'function') {
         return [{ surface: line, reading: toHiraganaBasic(line) }];
@@ -893,6 +913,8 @@
 
     async function refreshSongReadingIndex(song) {
       song.readingIndex = await buildReadingIndex(song);
+      song.readingTitle = await buildFieldReadingIndex(song.title);
+      song.readingArtist = await buildFieldReadingIndex(song.artist);
       const { readings, tokensPerLine } = await buildReadingLines(song);
       song.readingLines = readings;
       song.readingTokens = tokensPerLine;
@@ -901,6 +923,8 @@
     async function rebuildAllReadingIndexes() {
       for (const song of state.songs) {
         song.readingIndex = await buildReadingIndex(song);
+        song.readingTitle = await buildFieldReadingIndex(song.title);
+        song.readingArtist = await buildFieldReadingIndex(song.artist);
         const { readings, tokensPerLine } = await buildReadingLines(song);
         song.readingLines = readings;
         song.readingTokens = tokensPerLine;
@@ -1016,6 +1040,7 @@
       detailId: null,
       editingId: null,
       searchQuery: '',
+      searchMode: 'all',
       tagFilter: 'all',
       groupMode: 'artist',
       songs: loadSongs()
@@ -1030,6 +1055,7 @@
       searchClear: document.getElementById('searchClear'),
       searchCount: document.getElementById('searchCount'),
       searchList: document.getElementById('searchList'),
+      searchModeToolbar: document.getElementById('searchModeToolbar'),
       groupList: document.getElementById('groupList'),
       detailTitle: document.getElementById('detailTitle'),
       detailArtist: document.getElementById('detailArtist'),
@@ -1150,21 +1176,27 @@
       });
     }
 
-    function songCardHtml(song, query = '') {
-      const preview = getLyricsPreview(song, query);
+    function songCardHtml(song, query = '', mode = 'all') {
+      const showTitleHighlight = mode === 'all' || mode === 'title';
+      const showArtistHighlight = mode === 'all' || mode === 'artist';
+      const showLyricsPreview = mode === 'all' || mode === 'lyrics';
+      const showTagHighlight = mode === 'all';
+      const preview = showLyricsPreview ? getLyricsPreview(song, query) : { html: '' };
+      const titleHtml = showTitleHighlight ? highlight(song.title, query) : esc(song.title);
+      const artistHtml = showArtistHighlight ? highlight(song.artist || 'アーティスト未入力', query) : esc(song.artist || 'アーティスト未入力');
       return `
         <article class="song-card" data-song-id="${song.id}">
           <div class="song-card-head">
             <div>
-              <h3 class="song-title">${highlight(song.title, query)}</h3>
-              <div class="song-artist">${highlight(song.artist || 'アーティスト未入力', query)}</div>
+              <h3 class="song-title">${titleHtml}</h3>
+              <div class="song-artist">${artistHtml}</div>
             </div>
             <button class="fav-btn ${song.favorite ? 'active' : ''}" data-fav-id="${song.id}" type="button" aria-label="お気に入り切り替え">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="${song.favorite ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
             </button>
           </div>
           ${preview.html ? `<div class="song-preview">${preview.html}</div>` : ''}
-          ${song.tags.length ? `<div class="tag-list">${song.tags.map(tag => `<span class="tag">${highlight(tag, query)}</span>`).join('')}</div>` : ''}
+          ${song.tags.length ? `<div class="tag-list">${song.tags.map(tag => `<span class="tag">${showTagHighlight ? highlight(tag, query) : esc(tag)}</span>`).join('')}</div>` : ''}
         </article>
       `;
     }
@@ -1196,26 +1228,54 @@
       wireSongCards(els.homeList);
     }
 
+    function searchModeLabel(mode) {
+      switch (mode) {
+        case 'title': return '曲名';
+        case 'lyrics': return '歌詞';
+        case 'artist': return 'アーティスト';
+        default: return '曲名・アーティスト・歌詞・タグ';
+      }
+    }
+
+    function songMatchesMode(song, mode, lower, normalizedQuery) {
+      if (mode === 'title') {
+        const titleLower = (song.title || '').toLowerCase();
+        const readingTitle = normalizeSearchText(song.readingTitle || song.title || '');
+        return titleLower.includes(lower) || readingTitle.includes(normalizedQuery);
+      }
+      if (mode === 'artist') {
+        const artistLower = (song.artist || '').toLowerCase();
+        const readingArtist = normalizeSearchText(song.readingArtist || song.artist || '');
+        return artistLower.includes(lower) || readingArtist.includes(normalizedQuery);
+      }
+      if (mode === 'lyrics') {
+        const lyricsLower = (song.lyrics || '').toLowerCase();
+        if (lyricsLower.includes(lower)) return true;
+        return findReadingMatchLine(song, normalizedQuery) !== -1;
+      }
+      const fields = [song.title, song.artist, song.lyrics, song.memo, ...song.tags].join(' ').toLowerCase();
+      const readingField = normalizeSearchText(song.readingIndex || fields);
+      return fields.includes(lower) || readingField.includes(normalizedQuery);
+    }
+
     function renderSearch() {
       const q = state.searchQuery.trim();
+      const modeLabel = searchModeLabel(state.searchMode);
       if (!q) {
         els.searchCount.textContent = '';
-        els.searchList.innerHTML = emptyState('検索してみましょう', '曲名・アーティスト・歌詞・タグの一部で探せます');
+        els.searchList.innerHTML = emptyState('検索してみましょう', `${modeLabel}の一部で探せます`);
         return;
       }
       const lower = q.toLowerCase();
       const normalizedQuery = normalizeSearchText(q);
-      const results = state.songs.filter(song => {
-        const fields = [song.title, song.artist, song.lyrics, song.memo, ...song.tags].join(' ').toLowerCase();
-        const readingField = normalizeSearchText(song.readingIndex || fields);
-        return fields.includes(lower) || readingField.includes(normalizedQuery);
-      }).sort((a, b) => b.createdAt - a.createdAt);
+      const results = state.songs.filter(song => songMatchesMode(song, state.searchMode, lower, normalizedQuery))
+        .sort((a, b) => b.createdAt - a.createdAt);
       els.searchCount.textContent = `${results.length}件見つかりました`;
       if (!results.length) {
         els.searchList.innerHTML = emptyState(`「${esc(q)}」は見つかりませんでした`, '別のキーワードを試してください');
         return;
       }
-      els.searchList.innerHTML = results.map(song => songCardHtml(song, q)).join('');
+      els.searchList.innerHTML = results.map(song => songCardHtml(song, q, state.searchMode)).join('');
       wireSongCards(els.searchList);
     }
 
@@ -1480,6 +1540,16 @@
       els.searchClear.classList.add('hidden');
       renderSearch();
       els.searchInput.focus();
+    });
+
+    els.searchModeToolbar.querySelectorAll('[data-search-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.searchMode = btn.dataset.searchMode;
+        els.searchModeToolbar.querySelectorAll('[data-search-mode]').forEach(b => {
+          b.classList.toggle('active', b === btn);
+        });
+        renderSearch();
+      });
     });
 
     showScreen('home');
