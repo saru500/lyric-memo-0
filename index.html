@@ -42,43 +42,22 @@
       --font-body: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
     }
 
-    :root,
-    html[data-theme="light"],
-    [data-theme="light"] {
-      --color-bg: #f7f6f2;
-      --color-surface: #f9f8f5;
-      --color-surface-2: #fbfbf9;
-      --color-surface-offset: #f1eeea;
-      --color-border: #d7d2ca;
-      --color-divider: #e2ddd5;
-      --color-text: #28251d;
-      --color-text-muted: #6f6d67;
-      --color-text-faint: #a8a49d;
-      --color-primary: #01696f;
-      --color-primary-hover: #0c4e54;
-      --color-primary-soft: #d9e7e5;
-      --color-danger: #a13544;
-      --shadow-sm: 0 1px 2px oklch(0.2 0.01 80 / 0.06);
-      --shadow-md: 0 8px 24px oklch(0.2 0.01 80 / 0.08);
-    }
-
-    html[data-theme="dark"],
-    [data-theme="dark"] {
-      --color-bg: #0a0a09;
-      --color-surface: #121110;
-      --color-surface-2: #161514;
-      --color-surface-offset: #1c1a18;
-      --color-border: #2c2a27;
-      --color-divider: #1f1d1b;
-      --color-text: #e4e1db;
-      --color-text-muted: #8f8b83;
-      --color-text-faint: #5c584f;
-      --color-primary: #4f98a3;
-      --color-primary-hover: #66aebb;
-      --color-primary-soft: #1a2b2d;
-      --color-danger: #dd6974;
-      --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
-      --shadow-md: 0 10px 28px oklch(0 0 0 / 0.5);
+    :root {
+      --color-bg: #050504;
+      --color-surface: #0c0b0a;
+      --color-surface-2: #100f0e;
+      --color-surface-offset: #151312;
+      --color-border: #232120;
+      --color-divider: #171615;
+      --color-text: #c7c4bd;
+      --color-text-muted: #77746d;
+      --color-text-faint: #48453f;
+      --color-primary: #3d7d86;
+      --color-primary-hover: #4f929c;
+      --color-primary-soft: #12201f;
+      --color-danger: #b6555f;
+      --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.5);
+      --shadow-md: 0 10px 28px oklch(0 0 0 / 0.6);
     }
 
     * { box-sizing: border-box; }
@@ -639,9 +618,7 @@
             <p>自分用の歌詞整理アプリ</p>
           </div>
         </div>
-        <div class="header-actions">
-          <button class="icon-btn" id="themeToggle" aria-label="テーマ切り替え"></button>
-        </div>
+        <div class="header-actions"></div>
       </div>
     </header>
 
@@ -1050,7 +1027,6 @@
     };
 
     const els = {
-      themeToggle: document.getElementById('themeToggle'),
       statsRow: document.getElementById('statsRow'),
       homeList: document.getElementById('homeList'),
       tagFilterRow: document.getElementById('tagFilterRow'),
@@ -1076,20 +1052,8 @@
       importFile: document.getElementById('importFile')
     };
 
-    const isDarkSystem = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    let isDark = isDarkSystem;
-    function renderThemeIcon() {
-      app.setAttribute('data-theme', isDark ? 'dark' : 'light');
-      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-      els.themeToggle.innerHTML = isDark
-        ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79"></path></svg>'
-        : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path></svg>';
-    }
-    els.themeToggle.addEventListener('click', () => {
-      isDark = !isDark;
-      renderThemeIcon();
-    });
-    renderThemeIcon();
+    app.setAttribute('data-theme', 'dark');
+    document.documentElement.setAttribute('data-theme', 'dark');
 
     function esc(str = '') {
       return str
